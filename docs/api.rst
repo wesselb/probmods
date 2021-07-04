@@ -1,7 +1,7 @@
 Application Programming Interface
 =================================
 
-.. automodule:: probabilistic-models
+.. automodule:: probmods
     :members:
     :undoc-members:
     :show-inheritance:
@@ -9,4 +9,4 @@ Application Programming Interface
 .. toctree::
    :glob:
 
-   source/probabilistic-models.*
+   source/probmods.*

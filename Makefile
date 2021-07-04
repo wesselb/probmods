@@ -1,6 +1,6 @@
 .PHONY: docmake docopen docinit docremove docupdate install test clean
 
-PACKAGE := probabilistic-models
+PACKAGE := probmods
 
 docmake:
 	rm -rf docs/source

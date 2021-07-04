@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# probabilistic-models documentation build configuration file, created by
+# probmods documentation build configuration file, created by
 # sphinx-quickstart.
 #
 # This file is execfile()d with the current directory set to its
@@ -51,7 +51,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'probabilistic-models'
+project = u'probmods'
 copyright = u'2021, Wessel Bruinsma'
 author = u'Wessel Bruinsma'
 
@@ -144,7 +144,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'probabilistic-models.tex', u'Probabilistic Models Documentation',
+    (master_doc, 'probmods.tex', u'Probabilistic Models Documentation',
      u'Wessel Bruinsma', 'manual'),
 ]
 
@@ -154,7 +154,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'probabilistic-models', u'Probabilistic Models Documentation',
+    (master_doc, 'probmods', u'Probabilistic Models Documentation',
      [author], 1)
 ]
 
@@ -165,7 +165,7 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'probabilistic-models', u'Probabilistic Models Documentation',
-     author, 'probabilistic-models', 'An interface to facilitate rapid development and deployment of probabilistic models',
+    (master_doc, 'probmods', u'Probabilistic Models Documentation',
+     author, 'probmods', 'An interface to facilitate rapid development and deployment of probabilistic models',
      'Miscellaneous'),
 ]
