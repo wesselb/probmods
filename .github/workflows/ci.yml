@@ -23,14 +23,14 @@ jobs:
           pip install --no-cache-dir -U -r requirements.txt | cat
       - name: Check style
         run: |
-          black --check *.py probabilistic-models tests
+          black --check *.py probmods tests
       - name: Test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COVERALLS_FLAG_NAME: ${{ matrix.python-version }}
           COVERALLS_PARALLEL: true
         run: |
-          pytest -v --cov=probabilistic-models --cov-report term-missing
+          pytest -v --cov=probmods --cov-report term-missing
           coveralls --service=github
   coveralls:
     name: Finish coverage
