@@ -262,7 +262,7 @@ def untransform(b: Log, y: Tuple[_Numeric, _Numeric]):
 @_dispatch
 @_extend_i
 def logdet(b: Log, y: _Numeric):
-    return -B.sum(y)
+    return -B.nansum(y)
 
 
 class Squishing(Bijection):
@@ -284,7 +284,7 @@ def untransform(b: Squishing, y: _Numeric):
 @_dispatch
 @_extend_i
 def logdet(b: Squishing, y: _Numeric):
-    return -B.sum(B.abs(y))
+    return -B.nansum(B.abs(y))
 
 
 @_dispatch

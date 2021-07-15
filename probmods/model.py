@@ -8,10 +8,7 @@ from lab import B
 from plum import Dispatcher
 from varz import Vars
 
-__all__ = [
-    "ProbabilisticModel",
-    "MultiOutputModel",
-]
+__all__ = ["ProbabilisticModel", "MultiOutputModel"]
 
 _dispatch = Dispatcher()
 
@@ -171,6 +168,8 @@ convert_arguments = create_argument_converter(rank=2, autogpu=True)
 
 
 class ProbabilisticModelMeta(abc.ABCMeta):
+    """Metaclass for probabilistic models."""
+
     def __new__(cls, name, bases, dict_):
         instance = abc.ABCMeta.__new__(cls, name, bases, dict_)
         skip_methods = instance.__abstractmethods__
@@ -196,32 +195,43 @@ class ProbabilisticModel(metaclass=ProbabilisticModelMeta):
         self.dtype = dtype
         self._vs_source = _Source(Vars(dtype))
 
+    @property
+    def noiseless(self):
+        """:class:`.ProbabilisticModel`: Noiseless version of the model."""
+        raise NotImplementedError(
+            f"A noiseless version of "
+            f"`{self.__class__.__name__}.{self.__class__.__qualname__}` is not "
+            f"available."
+        )
+
     @abc.abstractmethod
-    def logpdf(self, x, y):
+    def logpdf(self, x, y, noise=None):
         """Compute the logpdf of observations.
 
         Args:
             x (tensor): Inputs of observations.
             y (tensor): Outputs of observations.
+            noise (tensor, optional): Additional noise for the observations.
 
         Returns:
             scalar: The logpdf.
         """
 
     @abc.abstractmethod
-    def condition(self, x, y):
+    def condition(self, x, y, noise=None):
         """Condition the model on observations.
 
         Args:
             x (tensor): Inputs of observations.
             y (tensor): Outputs of observations.
+            noise (tensor, optional): Additional noise for the observations.
 
         Returns:
             :class:`.ProbabilisticModel`: A posterior version of the model.
         """
 
     @abc.abstractmethod
-    def fit(self, x, y, **kw_args):
+    def fit(self, x, y, noise=None, **kw_args):
         """Fit the model.
 
         Takes in further keyword arguments which will be passed to an optimiser.
@@ -229,6 +239,7 @@ class ProbabilisticModel(metaclass=ProbabilisticModelMeta):
         Args:
             x (tensor): Inputs of observations.
             y (tensor): Outputs of observations.
+            noise (tensor, optional): Additional noise for the observations.
         """
 
     @abc.abstractmethod
@@ -239,7 +250,7 @@ class ProbabilisticModel(metaclass=ProbabilisticModelMeta):
             x (tensor): Inputs to sample at.
 
         Returns:
-            tensor: Samples from the prior.
+            tensor: Samples from the model.
         """
 
     @abc.abstractmethod

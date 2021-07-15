@@ -15,12 +15,3 @@ Then simply
 ```
 pip install probmods
 ```
-
-## Basic Usage
-
-Like so:
-
-```python
->>> print('Hello, world!')
-Hello, world!
-```
