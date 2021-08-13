@@ -147,8 +147,14 @@ class Normaliser(Bijection):
                 return self._mean[0, i], self._scale[0, i]
         else:
             if fit:
-                self._mean = B.nanmean(x, axis=0, squeeze=False)
-                self._scale = B.nanstd(x, axis=0, squeeze=False)
+                if B.rank(x) == 1:
+                    self._mean = B.nanmean(x)
+                    self._scale = B.nanscale(x)
+                elif B.rank(x) == 2:
+                    self._mean = B.nanmean(x, axis=0, squeeze=False)
+                    self._scale = B.nanstd(x, axis=0, squeeze=False)
+                else:
+                    raise ValueError(f"Invalid rank of `x` {B.rank(x)}.")
                 self._fit = True
                 return self._get_mean_scale(x, i)
             else:
@@ -201,7 +207,7 @@ def untransform(b: Normaliser, y: _Numeric, i: B.Int):
 def untransform(b: Normaliser, y: Tuple[_Numeric, _Numeric]):
     mean, scale = b._get_mean_scale(y)
     dist_mean, dist_var = y
-    if B.rank(dist_var) == 2:
+    if B.rank(dist_var) in {1, 2}:
         return (
             dist_mean * scale + mean,
             dist_var * scale ** 2,
@@ -218,13 +224,13 @@ def untransform(b: Normaliser, y: Tuple[_Numeric, _Numeric]):
 @_dispatch
 def logdet(b: Normaliser, y: _Numeric):
     _, scale = b._get_mean_scale(y)
-    return -B.shape(y, 0) * B.sum(B.log(scale))
+    return -B.sum(B.ones(y) * B.log(scale))
 
 
 @_dispatch
 def logdet(b: Normaliser, y: _Numeric, i: B.Int):
     _, scale = b._get_mean_scale(y, i)
-    return -B.shape(y, 0) * B.log(scale)
+    return -B.sum(B.ones(y) * B.log(scale))
 
 
 class Log(Bijection):
