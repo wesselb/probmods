@@ -230,7 +230,7 @@ mean, var = posterior.predict(x_new)
 #### Models and Instances
 _Models_ are functions from _learnable parameters_ to _instances of models_.
 An _instance of a model_, or simply an _instance_, is an object with concrete
-values for it's all parameters which can do thing like sample or compute
+values for it's all parameters and which can do things like sample or compute
 a log-pdf.
 Moreover, models can be parametrised by _non-learnabe parameters_, like 
 initial values for learnable parameters or parameters which define the structure
@@ -328,7 +328,8 @@ benefits:
 #### Convenience: `@convert`
 
 Although the internal variables of `instance` are TensorFlow tensors,
-the output of `instance.sample(x)` is a NumPy array, rather than a 
+you can simply feel a NumPy array to `instance.sample`.
+Furthermore, the output of `instance.sample(x)` is a NumPy array, rather than a 
 TensorFlow tensor:
 
 ```python
@@ -347,7 +348,7 @@ array([[0.58702797],
        [-2.4540234]], dtype=float32)
 ```
 
-This behaviour is due to the `@convert` decorates, which automatically
+This behaviour is due to the `@convert` decorator, which automatically
 converts NumPy arguments  to the right framework (in this case, TensorFlow) and
 the right data type (in this case, `tf.float32`).
 Moreover, if _only_ NumPy arguments were given, `probmods` then also converts
@@ -370,9 +371,7 @@ array([[ 0.37403315],
        [-0.47107112]], dtype=float32)>
 ```
 
-The rules for `@convert` are as follows.
-For every non-private method of a model, `probmods` automatically performs the
-following conversions:
+The rules for `@convert` are as follows:
 
 * Every argument which is a NumPy array is automatically converted to the
   appropriate framework and the approprate data type.
@@ -500,12 +499,12 @@ When you subclass `Model`, you should at least implement the following methods:
 
 | Method                           | Description |
 | --                               | -- |
-| `def __prior__(self):`           | Construct the prior of the model. |
-| `def __condition__(self, x, y):` | The prior was previously constructed. Update the prior by conditioning on `(x, y)`. You may want to use `@convert`. |
-| `def __noiseless__(self):`       | Remove noise from the current model. |
-| `def logpdf(self, x, y):`        | Compute the logpdf for `(x, y)`. This needs to be an `@instancemethod` and you may want to use `@convert`. |
-| `def sample(self, x):`           | Sample at inputs `x`. This needs to be an `@instancemethod` and you may want to use `@convert`. |
-| `def predict(self):`             | Predict at inputs `x`. The default implementation samples and computes the mean and variance of these samples, but you can override this implementation. This needs to be an `@instancemethod` and you may want to use `@convert`. |
+| `__prior__(self)`           | Construct the prior of the model. |
+| `__condition__(self, x, y)` | The prior was previously constructed. Update the prior by conditioning on `(x, y)`. You may want to use `@convert`. |
+| `__noiseless__(self)`       | Remove noise from the current model. |
+| `logpdf(self, x, y)`        | Compute the logpdf for `(x, y)`. This needs to be an `@instancemethod` and you may want to use `@convert`. |
+| `sample(self, x)`           | Sample at inputs `x`. This needs to be an `@instancemethod` and you may want to use `@convert`. |
+| `predict(self)`             | Predict at inputs `x`. The default implementation samples and computes the mean and variance of these samples, but you can override this implementation. This needs to be an `@instancemethod` and you may want to use `@convert`. |
 
 For reference, we again show the implementation of `GPModel` here:
 
