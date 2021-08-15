@@ -1,8 +1,8 @@
 from lab import B
 from numpy.testing import assert_allclose as approx
 from plum import Dispatcher
-
-from probmods import Model, Transformed
+from probmods import Model
+from varz import Vars
 
 __all__ = ["check_model"]
 
@@ -48,10 +48,12 @@ class Regularisation:
         B.epsilon = self.old_epsilon
 
 
-@_dispatch
 def check_model(
-    model: Model,
-    dtype: B.DType,
+    model,
+    dtype=None,
+    epsilon=1e-12,
+    atol=1e-4,
+    rtol=1e-4,
     test_sampling_random=True,
     test_sampling_noiseless_posterior=True,
     test_predict_noiseless_posterior=True,
@@ -63,7 +65,12 @@ def check_model(
 
     Args:
         model (:class:`.model.Model`): Model to test.
-        dtype (dtype): Data type to instantiate the model with.
+        dtype (dtype, optional): Data type of variables. to instantiate the model with.
+        epsilon (float, optional): Amount of extra regularisation. Defaults to `1e-12`.
+        atol (float, optional): Absolute tolerance on recovery tests. Defaults to
+            `1e-4`.
+        rtol (float, optional): Relative tolerance on recovery tests. Defaults to
+            `1e-4`.
         test_sampling_random (bool, optional): Test that sampling is random. Defaults
             to `True`.
         test_sampling_noiseless_posterior (bool, optional): Test that sampling from a
@@ -76,12 +83,15 @@ def check_model(
             after conditioning. Defaults to `True`.
         test_fit (bool, optional): Test that `model.fit(x, y)` runs. Defaults to `True`.
     """
-    with Regularisation(1e-10):
-        model = Transformed(dtype, model, data_transform="normalise+positive")
+    with Regularisation(epsilon):
+        if dtype is not None:
+            model.vs = Vars(dtype)
 
         # Generate data by sampling from the prior.
-        x = B.linspace(0, 5, 10)
-        y = model.sample(x)
+        x = B.linspace(0, 5, 5)
+        # Sample from a noiseless version of the model to ensure that it is in
+        # the support of the model.
+        y = model.noiseless.sample(x)
 
         # Check that sampling is random.
         if test_sampling_random:
@@ -98,19 +108,19 @@ def check_model(
             approx(
                 B.squeeze(model.noiseless.condition(x, y).sample(x)),
                 B.squeeze(y),
-                rtol=1e-4,
+                rtol=rtol
             )
 
         # Check that predictions after conditioning without noise matches the data.
         if test_predict_noiseless_posterior:
             mean, var = model.noiseless.condition(x, y).predict(x)
-            approx(B.squeeze(mean), B.squeeze(y), rtol=1e-4)
-            approx(var, 0, atol=1e-4)
+            approx(B.squeeze(mean), B.squeeze(y), rtol=rtol)
+            approx(var, 0, atol=atol)
 
         # Check that predictions after conditioning noise gives predictive variance.
         if test_predict_noisy_posterior:
             mean, var = model.condition(x, y).predict(x)
-            assert B.all(var >= 0)  # Variance must be non-negative
+            assert B.all(var >= 0)  # Variance must be non-negative.
             unequal(var, 0, rtol=1e-2)
 
         # Check that the log-pdf computes. Note that the log-pdf may be stochastic.
@@ -120,4 +130,5 @@ def check_model(
 
         # Check that the model can be fit.
         if test_fit:
-            model.fit(x, y)
+            # Add some noise: the data was noiseless.
+            model.fit(x, y + B.randn(*B.shape(y)), iters=10)
