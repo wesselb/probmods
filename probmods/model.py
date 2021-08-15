@@ -290,7 +290,7 @@ class Model(metaclass=CovariantMeta):
     def __prior__(self):
         """Construct the prior."""
         raise NotImplementedError(
-            f'The prior of of "{format_class_of(x)}" is not implemented.'
+            f'The prior of of "{format_class_of(self)}" is not implemented.'
         )
 
     def __condition__(self, x, y):
@@ -301,13 +301,13 @@ class Model(metaclass=CovariantMeta):
             y (tensor): Outputs of observations.
         """
         raise NotImplementedError(
-            f'Conditioning for "{format_class_of(x)}" is not implemented.'
+            f'Conditioning for "{format_class_of(self)}" is not implemented.'
         )
 
     def __noiseless__(self):
         """Remove noise from the model."""
         raise NotImplementedError(
-            f'A noiseless version of "{format_class_of(x)}" is not implemented.'
+            f'A noiseless version of "{format_class_of(self)}" is not implemented.'
         )
 
     @property
@@ -320,7 +320,7 @@ class Model(metaclass=CovariantMeta):
             model.__noiseless__()
             return model
 
-        instance.instatiator = instantiator
+        instance.instantiator = instantiator
 
         return instance
 
@@ -335,7 +335,7 @@ class Model(metaclass=CovariantMeta):
             scalar: The logpdf.
         """
         raise NotImplementedError(
-            f'The log-pdf for "{format_class_of(x)}" is not implemented.'
+            f'The log-pdf for "{format_class_of(self)}" is not implemented.'
         )
 
     def condition(self, x, y):
@@ -369,7 +369,7 @@ class Model(metaclass=CovariantMeta):
             tensor: Samples from the model.
         """
         raise NotImplementedError(
-            f'Sampling from "{format_class_of(x)}" is not implemented.'
+            f'Sampling from "{format_class_of(self)}" is not implemented.'
         )
 
     @instancemethod
@@ -438,8 +438,8 @@ class Transformed(Model):
     @instancemethod
     @convert
     def logpdf(self, x, y):
-        y = self.data_transform(y)
-        return self.model.logpdf(x, y) + self.data_transform.logdet(y)
+        y_transformed = self.data_transform(y)
+        return self.model.logpdf(x, y_transformed) + self.data_transform.logdet(y)
 
     @instancemethod
     @convert

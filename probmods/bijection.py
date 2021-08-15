@@ -3,7 +3,8 @@ import re
 
 import lab as B
 from matrix import AbstractMatrix, TiledBlocks
-from plum import Union, Dispatcher, Tuple
+from plum import Union, Dispatcher, Tuple, parametric
+from plum.parametric import CovariantMeta
 
 __all__ = [
     "Bijection",
@@ -19,7 +20,7 @@ _dispatch = Dispatcher()
 _Numeric = Union[B.Numeric, AbstractMatrix]
 
 
-class Bijection:
+class Bijection(metaclass=CovariantMeta):
     """A bijection."""
 
     def transform(self, x, *args):
@@ -62,6 +63,7 @@ class Bijection:
         return logdet(self, x, *args)
 
 
+@parametric
 class Composition(Bijection):
     """Composition of bijections.
 
@@ -88,12 +90,12 @@ def untransform(b: Composition, y, *args):
 
 
 @_dispatch
-def logdet(b: Composition, y, *args):
+def logdet(b: Composition, x, *args):
     logdet_sum = 0
-    for bi in b.bijections[:-1]:
-        logdet_sum = logdet_sum + logdet(bi, y, *args)
-        y = untransform(bi, y, *args)
-    return logdet_sum + logdet(b.bijections[-1], y, *args)
+    for bi in reversed(b.bijections[1:]):
+        logdet_sum = logdet_sum + logdet(bi, x, *args)
+        x = transform(bi, x, *args)
+    return logdet_sum + logdet(b.bijections[0], x, *args)
 
 
 def _extend_i(f):
@@ -142,28 +144,50 @@ class Normaliser(Bijection):
     def _get_mean_scale(self, x, i=None, fit=False):
         if self._fit:
             if i is None:
-                return self._mean, self._scale
+                if B.rank(x) < 2:
+                    return B.squeeze(self._mean), B.squeeze(self._scale)
+                else:
+                    return self._mean, self._scale
             else:
-                return self._mean[0, i], self._scale[0, i]
+                if B.rank(self._mean) == 2 and B.rank(self._scale) == 2:
+                    return self._mean[0, i], self._scale[0, i]
+                else:
+                    # Must be scalar, so safe to just return.
+                    return self._mean, self._scale
         else:
             if fit:
-                if B.rank(x) == 1:
+                if B.rank(x) == 0:
+                    self._mean = x
+                    self._scale = 1
+                elif B.rank(x) == 1:
                     self._mean = B.nanmean(x)
-                    self._scale = B.nanscale(x)
+                    self._scale = B.nanstd(x)
+                    if B.jit_to_numpy(self._scale) == 0:
+                        self._scale = 1
                 elif B.rank(x) == 2:
                     self._mean = B.nanmean(x, axis=0, squeeze=False)
                     self._scale = B.nanstd(x, axis=0, squeeze=False)
+                    self._scale = B.where(
+                        B.jit_to_numpy(self._scale) == 0,
+                        B.ones(self._scale),
+                        self._scale,
+                    )
                 else:
                     raise ValueError(f"Invalid rank of `x` {B.rank(x)}.")
                 self._fit = True
                 return self._get_mean_scale(x, i)
             else:
-                if i is None:
-                    dtype = B.dtype(x)
-                    n = B.shape(x, 0)
-                    return B.zeros(dtype, n, 1), B.ones(dtype, n, 1)
-                else:
+                if B.rank(x) in {0, 1}:
                     return B.zero(x), B.one(x)
+                elif B.rank(x) == 2:
+                    if i is None:
+                        dtype = B.dtype(x)
+                        n = B.shape(x, 0)
+                        return B.zeros(dtype, n, 1), B.ones(dtype, n, 1)
+                    else:
+                        return B.zero(x), B.one(x)
+                else:
+                    raise ValueError(f"Invalid rank of `x` {B.rank(x)}.")
 
 
 @_dispatch
@@ -192,6 +216,25 @@ def transform(b: Normaliser, x: TiledBlocks):
 
 
 @_dispatch
+def transform(b: Normaliser, y: Tuple[_Numeric, _Numeric]):
+    dist_mean, dist_var = y
+    mean, scale = b._get_mean_scale(dist_mean)
+    if B.rank(dist_var) in {0, 1, 2}:
+        return (
+            (dist_mean - mean) / scale,
+            dist_var / scale ** 2,
+        )
+    elif B.rank(dist_var) == 3:
+        scale = B.uprank(scale, rank=2)
+        return (
+            (dist_mean - mean) / scale,
+            dist_var / scale[:, :, None] / scale[:, None, :],
+        )
+    else:
+        raise ValueError(f"Invalid rank {B.rank(dist_var)} of the variance.")
+
+
+@_dispatch
 def untransform(b: Normaliser, y: _Numeric):
     mean, scale = b._get_mean_scale(y)
     return y * scale + mean
@@ -204,15 +247,29 @@ def untransform(b: Normaliser, y: _Numeric, i: B.Int):
 
 
 @_dispatch
+def untransform(b: Normaliser, x: TiledBlocks):
+    # `x` is a variance.
+    mean, scale = b._get_mean_scale(x)
+    return TiledBlocks(
+        *[
+            (block * scale * B.transpose(scale), rep)
+            for block, rep in zip(x.blocks, x.reps)
+        ],
+        axis=x.axis,
+    )
+
+
+@_dispatch
 def untransform(b: Normaliser, y: Tuple[_Numeric, _Numeric]):
-    mean, scale = b._get_mean_scale(y)
     dist_mean, dist_var = y
-    if B.rank(dist_var) in {1, 2}:
+    mean, scale = b._get_mean_scale(dist_mean)
+    if B.rank(dist_var) in {0, 1, 2}:
         return (
             dist_mean * scale + mean,
             dist_var * scale ** 2,
         )
     elif B.rank(dist_var) == 3:
+        scale = B.uprank(scale, rank=2)
         return (
             dist_mean * scale + mean,
             dist_var * scale[:, :, None] * scale[:, None, :],
@@ -222,15 +279,15 @@ def untransform(b: Normaliser, y: Tuple[_Numeric, _Numeric]):
 
 
 @_dispatch
-def logdet(b: Normaliser, y: _Numeric):
-    _, scale = b._get_mean_scale(y)
-    return -B.sum(B.ones(y) * B.log(scale))
+def logdet(b: Normaliser, x: _Numeric):
+    _, scale = b._get_mean_scale(x)
+    return -B.sum(B.ones(x) * B.log(scale))
 
 
 @_dispatch
-def logdet(b: Normaliser, y: _Numeric, i: B.Int):
-    _, scale = b._get_mean_scale(y, i)
-    return -B.sum(B.ones(y) * B.log(scale))
+def logdet(b: Normaliser, x: _Numeric, i: B.Int):
+    _, scale = b._get_mean_scale(x, i)
+    return -B.sum(B.ones(x) * B.log(scale))
 
 
 class Log(Bijection):
@@ -242,17 +299,33 @@ class Log(Bijection):
 def transform(b: Log, x: _Numeric):
     return B.log(x)
 
+@_dispatch
+def transform(b: Log, y: Tuple[_Numeric, _Numeric]):
+    log_mean, log_var = y
+    if B.rank(log_var) in {0, 1, 2}:
+        pass
+    elif B.rank(log_var) == 3:
+        raise NotImplementedError(f"Log-transform not implemented for joint variances.")
+    else:
+        raise ValueError(f"Invalid rank {B.rank(log_var)} of the variance.")
+    # These are the mean and variance of the normal distribution.
+    var = B.log(log_var / log_mean ** 2 + 1)
+    return (
+        B.log(log_mean) - 0.5 * var,
+        var
+    )
+
 
 @_dispatch
 @_extend_i
-def untransform(b: Log, y: _Numeric):
-    return B.exp(y)
+def untransform(b: Log, x: _Numeric):
+    return B.exp(x)
 
 
 @_dispatch
 def untransform(b: Log, y: Tuple[_Numeric, _Numeric]):
     mean, var = y
-    if B.rank(var) == 2:
+    if B.rank(var) in {0, 1, 2}:
         pass
     elif B.rank(var) == 3:
         raise NotImplementedError(f"Log-transform not implemented for joint variances.")
@@ -267,8 +340,8 @@ def untransform(b: Log, y: Tuple[_Numeric, _Numeric]):
 
 @_dispatch
 @_extend_i
-def logdet(b: Log, y: _Numeric):
-    return -B.nansum(y)
+def logdet(b: Log, x: _Numeric):
+    return -B.nansum(B.log(x))
 
 
 class Squishing(Bijection):
@@ -289,8 +362,8 @@ def untransform(b: Squishing, y: _Numeric):
 
 @_dispatch
 @_extend_i
-def logdet(b: Squishing, y: _Numeric):
-    return -B.nansum(B.abs(y))
+def logdet(b: Squishing, x: _Numeric):
+    return -B.nansum(B.log(1 + B.abs(x)))
 
 
 @_dispatch
@@ -332,5 +405,5 @@ def parse(bijection: Bijection):
 
 
 @_dispatch
-def parse(bijection: type(None)):
+def parse(bijection: None):
     return Identity()

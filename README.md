@@ -58,8 +58,8 @@ init_length_scale = 1
 def prior(vs):
     """Construct the prior of the model."""
     ps = vs.struct  # Dynamic parameter struct
-    variance = ps.variance.positive(1)
-    length_scale = ps.length_scale.positive(1)
+    variance = ps.variance.positive(init_variance)
+    length_scale = ps.length_scale.positive(init_length_scale)
     noise = ps.noise.positive(init_noise)
     return GP(variance * EQ().stretch(length_scale)), noise
 
@@ -577,7 +577,18 @@ that you would like to use.
 it to `model.vs`.
 The second and third arguments are the model to transform and the specification
 of the transform.
-For the possible specifications of the transform, please see
+The following transformations are possible:
+
+| Transformation | Description |
+| :- | :- |
+| `"normalise"` | Subtract the mean and divide by the standard deviation. The mean to subtract and the standard deviation to divide by are computed from the data to which the transform is first applied; these values are then remembered. |
+| `"positive"` | Perform a log-transform. This is handy for positive data. |
+| `"squishing"` | Perform a transform which suppresses tails. This is handy with heavy-tailed data. |
+
+You can combine transforms by joining the strings with a `,` or `+`.
+For example, `"normalise+positive"` first applies a log-transform and then
+normalises the data.
+For a more detailed description of, please see
 `probmods.bijection.parse`.
 
 ### Model Fitting
@@ -612,5 +623,7 @@ def fit(model: Transformed[GPModel], x, y):
 
 ### Automatic Model Tests
 
-Coming soon.
+The function `probmods.test.check_model` can be used to perform some basic
+assertions on a model.
+See the documentation for more details.
 
