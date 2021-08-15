@@ -156,8 +156,8 @@ class GPModel(Model):
 
     def __prior__(self):
         """Construct the prior of the model."""
-        variance = self.ps.variance.positive(self.variance)
-        length_scale = self.ps.length_scale.positive(self.length_scale)
+        self.variance = self.ps.variance.positive(self.variance)
+        self.length_scale = self.ps.length_scale.positive(self.length_scale)
         self.f = GP(variance * EQ().stretch(length_scale))
         self.noise = self.ps.noise.positive(self.noise)
 
@@ -522,8 +522,8 @@ class GPModel(Model):
 
     def __prior__(self):
         """Construct the prior of the model."""
-        variance = self.ps.variance.positive(self.variance)
-        length_scale = self.ps.length_scale.positive(self.length_scale)
+        self.variance = self.ps.variance.positive(self.variance)
+        self.length_scale = self.ps.length_scale.positive(self.length_scale)
         self.f = GP(variance * EQ().stretch(length_scale))
         self.noise = self.ps.noise.positive(self.noise)
 
