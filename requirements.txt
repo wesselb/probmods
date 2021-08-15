@@ -6,3 +6,7 @@ pytest
 pytest-cov
 coveralls
 black
+tensorflow
+tensorflow-probability
+jax
+jaxlib

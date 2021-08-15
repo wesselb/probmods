@@ -299,6 +299,7 @@ class Log(Bijection):
 def transform(b: Log, x: _Numeric):
     return B.log(x)
 
+
 @_dispatch
 def transform(b: Log, y: Tuple[_Numeric, _Numeric]):
     log_mean, log_var = y
@@ -310,10 +311,7 @@ def transform(b: Log, y: Tuple[_Numeric, _Numeric]):
         raise ValueError(f"Invalid rank {B.rank(log_var)} of the variance.")
     # These are the mean and variance of the normal distribution.
     var = B.log(log_var / log_mean ** 2 + 1)
-    return (
-        B.log(log_mean) - 0.5 * var,
-        var
-    )
+    return (B.log(log_mean) - 0.5 * var, var)
 
 
 @_dispatch

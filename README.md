@@ -328,7 +328,7 @@ benefits:
 #### Convenience: `@convert`
 
 Although the internal variables of `instance` are TensorFlow tensors,
-you can simply feel a NumPy array to `instance.sample`.
+you can simply feed a NumPy array to `instance.sample`.
 Furthermore, the output of `instance.sample(x)` is a NumPy array, rather than a 
 TensorFlow tensor:
 
@@ -377,7 +377,7 @@ The rules for `@convert` are as follows:
   appropriate framework and the approprate data type.
   
 * Every array argument is ensured to be a tensor of at least rank 2, which is
-  achieved by added empty dimension. You can specify another minimum rank, like
+  achieved by added empty dimensions. You can specify another minimum rank, like
   0 or 1, by using `@convert(rank=0)`.
 
 * Every argument is automatically moved to the GPU, if one is available. You
@@ -391,7 +391,7 @@ The rules for `@convert` are as follows:
 When `model` is instantiated by calling it with `parameters`, the following
 happens:
 
-1. First of all, the model is _copied_ to prevent any mutation: 
+1. First of all, the model is _copied_ to safely allow mutation of the copy: 
 
     ```python
     instance = copy.copy(model)
@@ -421,7 +421,7 @@ happens:
     
 
 4. For every previous `model = model.condition(x, y)` or
-   `model = model.noiseless` calls, the corresponding operations are performed
+   `model = model.noiseless` call, the corresponding operations are performed
    on `instance` in the same order:
    
     ```python
@@ -469,7 +469,7 @@ the decorator will automatically instantiate the model with the variable
 container `model.vs`, assuming that it is available.
 That is, if `model.sample` is an `@instancemethod`, then `model.sample(x)`
 automatically translates to `model(model.vs).sample(x)`.
-`model.vs` does not automatically container a variable container: 
+`model.vs` does not automatically contain a variable container: 
 you will need to assign it one.
 
 ```python
@@ -495,12 +495,12 @@ The `Model` class offers the following properties:
 | `model.dtype`        | If the model is instantiated, this return the data type of `model.ps`. If the model is not instantiated, this attempts to returns the data type of `model.vs` |
 | `model.num_outputs`  | A convenience property which can be set to the number of outputs of the model. |
 
-When you subclass `Model`, you should at least implement the following methods:
+When you subclass `Model`, you should implement the following methods:
 
 | Method                           | Description |
 | --                               | -- |
 | `__prior__(self)`           | Construct the prior of the model. |
-| `__condition__(self, x, y)` | The prior was previously constructed. Update the prior by conditioning on `(x, y)`. You may want to use `@convert`. |
+| `__condition__(self, x, y)` | The prior was previously constructed. Update the model by conditioning on `(x, y)`. You may want to use `@convert`. |
 | `__noiseless__(self)`       | Remove noise from the current model. |
 | `logpdf(self, x, y)`        | Compute the logpdf for `(x, y)`. This needs to be an `@instancemethod` and you may want to use `@convert`. |
 | `sample(self, x)`           | Sample at inputs `x`. This needs to be an `@instancemethod` and you may want to use `@convert`. |
