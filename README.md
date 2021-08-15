@@ -583,7 +583,7 @@ The following transformations are possible:
 | :- | :- |
 | `"normalise"` | Subtract the mean and divide by the standard deviation. The mean to subtract and the standard deviation to divide by are computed from the data to which the transform is first applied; these values are then remembered. |
 | `"positive"` | Perform a log-transform. This is handy for positive data. |
-| `"squishing"` | Perform a transform which suppresses tails. This is handy with heavy-tailed data. |
+| `"squishing"` | Perform a transform which suppresses tails. This is handy for heavy-tailed data. |
 
 You can combine transforms by joining the strings with a `,` or `+`.
 For example, `"normalise+positive"` first applies a log-transform and then
