@@ -14,12 +14,12 @@ Contents:
     - [What is the Problem?](#what-is-the-problem)
     - [Basic Principles](#basic-principles)
         - [Models and Instances](#models-and-instances)
-        - [Convenience: `@convert`](#automatic-conversion-of-arguments-to-non-private-methods)
+        - [Convenience: `@convert`](#convenience-convert)
         - [Details of Model Instantiation](#details-of-model-instantiation)
-        - [Automatic Model Instantiation: `@instancemethod`](#automatic-model-instantiation)
+        - [Automatic Model Instantiation: `@instancemethod`](#automatic-model-instantiation-instancemethod)
         - [Description of Models](#description-of-models)
     - [Model Fitting](#model-fitting)
-    - [`Transformed`](#example-transformed)
+    - [`Transformed`](#transformed)
     - [Automatic Model Tests](#automatic-model-tests)
 
 ## Installation
