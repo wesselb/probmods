@@ -108,7 +108,7 @@ def check_model(
             approx(
                 B.squeeze(model.noiseless.condition(x, y).sample(x)),
                 B.squeeze(y),
-                rtol=rtol
+                rtol=rtol,
             )
 
         # Check that predictions after conditioning without noise matches the data.
