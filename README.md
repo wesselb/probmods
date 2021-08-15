@@ -101,7 +101,7 @@ def predict(vs, x):
 
 
 # Make predictions.
-mean, var = predict(vs, B.linspace(10, 15, 100))
+mean, var = predict(vs, B.linspace(tf.float32, 10, 15, 100))
 ```
 
 In the example, we sample data from a Gaussian process using
