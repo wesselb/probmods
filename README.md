@@ -593,8 +593,8 @@ For a more detailed description of, please see
 
 ### Model Fitting
 
-To fit a model, in the simplest instance, you can call `model.fit(x, y)`.
-The default implementation simple maximises `model.logpdf(x, y)`.
+To fit a model, you can just call `model.fit(x, y)`.
+The default implementation simply maximises `model.logpdf(x, y)`.
 See `probmods.model.fit` for a description of the arguments to `fit`.
 
 If you want to provide a custom fitting procedure for your model,
@@ -610,7 +610,7 @@ def fit(model: GPModel, x, y):
 
 Note that this will only apply to `model`s which are of the type `GPModel`.
 For example, this will not apply to `Transformed(dtype, GPModel(...))`.
-To implement a fitting procedure a transformed version  of `GPModel`, the
+To implement a fitting procedure for a transformed version of `GPModel`, the
 following is possible:
 
 ```python
