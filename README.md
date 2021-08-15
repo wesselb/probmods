@@ -317,10 +317,10 @@ benefits:
   
     ```python
     @jit
-    def pplp(vs, x1, y1, x2, y2):
+    def pplp(parameters, x1, y1, x2, y2):
         """Compute the log-pdf of `(x1, y1)` given `(x2, y2)`."""
         posterior = model.condition(x2, y2)
-        return posterior(vs).logpdf(x1, y1)
+        return posterior(parameters).logpdf(x1, y1)
     ```
 
 * *Composability:* Models can easily be used as components in bigger models.
