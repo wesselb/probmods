@@ -492,16 +492,17 @@ The `Model` class offers the following properties:
 | `model.vs`           |  A variable container which will be used to automatically instantiate the model when an `@instancemethod` is called uninstantiated. You need to explicitly assign a variable container to `model.vs`. |
 | `model.ps`           | Once the model is instantiated, `model.ps` (or `self.ps` from within the class) can be used to initialise constrained variables. `model.ps` is not available for uninstantiated models. As an example, after instantiation, `self.ps.parameter_group.matrix.orthogonal(shape=(5, 5))` returns a randomly initialised orthogonal matrix of shape `(5, 5)` named `parameter_group.matrix`. `ps` behaves like a nested struct, dictionary, or list. See [Varz](https://github.com/wesselb/varz#structlike-specification) for more details. |
 | `model.instantiated` | `True` if `model` is instantiated and `False` otherwise. |
+| `model.posterior`    | `True` if `model` is a conditioned. Throws an exception if `model` is not instantiated. |
 | `model.dtype`        | If the model is instantiated, this return the data type of `model.ps`. If the model is not instantiated, this attempts to returns the data type of `model.vs` |
 | `model.num_outputs`  | A convenience property which can be set to the number of outputs of the model. |
 
-When you subclass `Model`, you should implement the following methods:
+When you subclass `Model`, you can implement the following methods:
 
 | Method                           | Description |
 | --                               | -- |
 | `__prior__(self)`           | Construct the prior of the model. |
-| `__condition__(self, x, y)` | The prior was previously constructed. Update the model by conditioning on `(x, y)`. You may want to use `@convert`. |
-| `__noiseless__(self)`       | Remove noise from the current model. |
+| `__condition__(self, x, y)` | The prior was previously constructed. Update the model by conditioning on `(x, y)`. You may want to use `@convert`. You can either return the conditioned model or mutate the current model and return nothing.  |
+| `__noiseless__(self)`       | Remove noise from the current model. You can either return the noiseless model or mutate the current model and return nothing. |
 | `logpdf(self, x, y)`        | Compute the logpdf for `(x, y)`. This needs to be an `@instancemethod` and you may want to use `@convert`. |
 | `sample(self, x)`           | Sample at inputs `x`. This needs to be an `@instancemethod` and you may want to use `@convert`. |
 | `predict(self)`             | Predict at inputs `x`. The default implementation samples and computes the mean and variance of these samples, but you can override this implementation. This needs to be an `@instancemethod` and you may want to use `@convert`. |

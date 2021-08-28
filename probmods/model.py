@@ -1,7 +1,8 @@
 import contextlib
 import copy
-from functools import wraps
+from functools import wraps, partial
 from types import FunctionType
+import numpy as np
 
 from lab import B
 from plum import Dispatcher, parametric, Union
@@ -11,7 +12,15 @@ from varz.spec import Struct
 
 from .bijection import parse as parse_transform
 
-__all__ = ["convert", "instancemethod", "Model", "Transformed"]
+__all__ = [
+    "convert",
+    "instancemethod",
+    "priormethod",
+    "posteriormethod",
+    "Model",
+    "Transformed",
+    "fit"
+]
 
 _dispatch = Dispatcher()
 
@@ -41,7 +50,17 @@ def _same_framework(dtype, a):
 
 @_dispatch
 def _convert_input(dtype, rank, a: B.Numeric):
-    return B.to_active_device(B.uprank(B.cast(dtype, a), rank=rank))
+    # Only convert floating-point tensors.
+    if not B.issubdtype(B.dtype(a), np.floating):
+        return a
+    a = B.cast(dtype, a)
+    if B.rank(a) < rank:
+        a = B.uprank(a, rank=rank)
+    elif B.rank(a) > rank:
+        a = B.downrank(a, rank=rank)
+        if B.rank(a) != rank:
+            raise RuntimeError(f"Could not convert input to rank {rank}.")
+    return B.to_active_device(a)
 
 
 @_dispatch
@@ -120,13 +139,12 @@ def _convert_output_to_np(x):
 
 def convert(f=None, rank=2, gpu=True):
     """Create a decorator which automatically converts argument to the right framework
-    and the right data type, converts the tensors to at least a given rank, and
-    automatically converts back the output to NumPy if none of the arguments were of the
-    same right framework. It also automatically runs the method on the GPU if one is
-    available.
+    and the right data type, converts the tensors to a given rank, and automatically
+    converts back the output to NumPy if none of the arguments were of the same right
+    framework. It also automatically runs the method on the GPU if one is available.
 
     Args:
-        rank (int, optional): Minimum rank of arguments. Default to `2`.
+        rank (int, optional): Rank of arguments. Defaults to `2`.
         gpu (bool, optional): Automatically run the method on the GPU if one is
             available.
 
@@ -188,6 +206,61 @@ def instancemethod(f):
     return f_wrapped
 
 
+class _PendingFunction:
+    prior_pending = []
+    posterior_pending = []
+
+    def __init__(self):
+        self.name = None
+
+    def __set_name__(self, owner, name):
+        self.name = name
+
+        if not hasattr(owner, "_prior_methods"):
+            owner._prior_methods = {}
+        for f in _PendingFunction.prior_pending:
+            owner._prior_methods[f.__name__] = f
+        _PendingFunction.prior_pending.clear()
+
+        if not hasattr(owner, "_posterior_methods"):
+            owner._posterior_methods = {}
+        for f in _PendingFunction.posterior_pending:
+            owner._posterior_methods[f.__name__] = f
+        _PendingFunction.posterior_pending.clear()
+
+    def __get__(self, instance, owner):
+        # Prior and posterior methods are instance methods.
+        if not instance.instantiated:
+            # Attempt to automatically instantiate.
+            instance = instance(instance.vs)
+
+        # Find the right method.
+        if instance.posterior:
+            if self.name not in owner._posterior_methods:
+                raise RuntimeError(f"There is no posterior method for `{self.name}`.")
+            else:
+                return partial(owner._posterior_methods[self.name], instance)
+        else:
+            if self.name not in owner._prior_methods:
+                raise RuntimeError(f"There is no prior method for `{self.name}`.")
+            else:
+                return partial(owner._prior_methods[self.name], instance)
+
+
+def priormethod(f):
+    """Decorator to indicate that the method is a method of an instance which is still
+    a prior."""
+    _PendingFunction.prior_pending.append(f)
+    return _PendingFunction()
+
+
+def posteriormethod(f):
+    """Decorator to indicate that the method is a method of an instance which is
+    conditioned on data."""
+    _PendingFunction.posterior_pending.append(f)
+    return _PendingFunction()
+
+
 def format_class_of(x):
     cls = type(x)
     return f"{cls.__module__}.{cls.__qualname__}"
@@ -208,7 +281,7 @@ class Model(metaclass=CovariantMeta):
         """
         instance = copy.copy(self)
         instance.instantiated = True
-        instance.ps = ps if ps is not None else self.vs.struct
+        instance.ps = ps if ps is not None else instance.vs.struct
         instance.__prior__(*args, **kw_args)
         return instance.instantiator(instance)
 
@@ -233,6 +306,17 @@ class Model(metaclass=CovariantMeta):
     @_dispatch
     def instantiator(self, instantiator: FunctionType):
         self._instantiator = instantiator
+
+    @property
+    def posterior(self):
+        """bool: Boolean indicated whether the model is conditioned or not."""
+        if self.instantiated:
+            return hasattr(self, "_posterior") and self._posterior
+        else:
+            raise RuntimeError(
+                "Cannot determine whether an uninstantiated model is conditioned or "
+                "not."
+            )
 
     @property
     def ps(self):
@@ -290,7 +374,7 @@ class Model(metaclass=CovariantMeta):
     def __prior__(self):
         """Construct the prior."""
         raise NotImplementedError(
-            f'The prior of of "{format_class_of(self)}" is not implemented.'
+            f'The prior of "{format_class_of(self)}" is not implemented.'
         )
 
     def __condition__(self, x, y):
@@ -317,8 +401,13 @@ class Model(metaclass=CovariantMeta):
 
         def instantiator(*args, **kw_args):
             model = self.instantiator(*args, **kw_args)
-            model.__noiseless__()
-            return model
+            res = model.__noiseless__()
+            if res is None:
+                # Assume that `model` was modified.
+                return model
+            else:
+                # The return value is the noiseless model.
+                return res
 
         instance.instantiator = instantiator
 
@@ -338,7 +427,7 @@ class Model(metaclass=CovariantMeta):
             f'The log-pdf for "{format_class_of(self)}" is not implemented.'
         )
 
-    def condition(self, x, y):
+    def condition(self, *condition_args, **condition_kw_args):
         """Condition the model on observations.
 
         Args:
@@ -352,8 +441,15 @@ class Model(metaclass=CovariantMeta):
 
         def instantiator(*args, **kw_args):
             model = self.instantiator(*args, **kw_args)
-            model.__condition__(x, y)
-            return model
+            res = model.__condition__(*condition_args, **condition_kw_args)
+            if res is None:
+                # Assume that `model` was modified.
+                model._posterior = True
+                return model
+            else:
+                # The return value is the conditioned model.
+                res._posterior = True
+                return res
 
         instance.instantiator = instantiator
 

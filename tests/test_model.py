@@ -1,10 +1,12 @@
 # noinspection PyUnresolvedReferences
 import lab.tensorflow as B
+import numpy as np
+import pytest
 import tensorflow as tf
-from stheno import EQ, GP
-
-from probmods import Model, instancemethod, convert
+from probmods import Model, instancemethod, priormethod, posteriormethod, convert
 from probmods.test import check_model
+from stheno import EQ, GP
+from varz import Vars
 
 
 class GPModel(Model):
@@ -50,3 +52,51 @@ class GPModel(Model):
 
 def test_gp_model():
     check_model(GPModel(1, 1, 1e-2), tf.float64)
+
+
+def test_priormethod_posteriormethod():
+    class MyModel(Model):
+        def __prior__(self):
+            pass
+
+        def __condition__(self):
+            pass
+
+        @priormethod
+        def f(self):
+            return 1
+
+        @posteriormethod
+        def f(self):
+            return 2
+
+        @priormethod
+        def g(self):
+            return 3
+
+        @posteriormethod
+        def h(self):
+            return 4
+
+    m = MyModel()
+
+    with pytest.raises(AttributeError):
+        m.f()
+    with pytest.raises(AttributeError):
+        m.g()
+    with pytest.raises(AttributeError):
+        m.h()
+
+    m.vs = Vars(np.float64)
+
+    assert m.f() == 1
+    assert m.g() == 3
+    with pytest.raises(RuntimeError):
+        m.h()
+
+    m = m.condition()
+
+    assert m.f() == 2
+    with pytest.raises(RuntimeError):
+        m.g()
+    assert m.h() == 4
