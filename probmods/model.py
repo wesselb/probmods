@@ -19,7 +19,7 @@ __all__ = [
     "posteriormethod",
     "Model",
     "Transformed",
-    "fit"
+    "fit",
 ]
 
 _dispatch = Dispatcher()
