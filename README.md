@@ -256,12 +256,14 @@ initial values for the parameters of `model` are set, the actual parameters of
 >>> x = np.linspace(0, 10, 10)
 
 >>> model.sample(x)
-AttributeError: Variable container not available.
+AttributeError: Parameter struct not available.
 ```
 
 **Important assumption:**
 It is assumed that models like `model` can safely be copied using `copy.copy`,
 which  performs a _shallow copy_.
+This means that the constructor of a model should not do much more than
+model configuration through setting attributes.
 If a shallow copy is not appropriate, you should implement `model.__copy__`.
 
 The object `model` acts like a function from parameters to instances of model.
