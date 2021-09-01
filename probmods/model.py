@@ -1,11 +1,11 @@
-import contextlib
 import copy
+import warnings
 from functools import wraps, partial
 from types import FunctionType
-import numpy as np
 
+import numpy as np
 from lab import B
-from plum import Dispatcher, parametric, Union
+from plum import Dispatcher, parametric, Union, convert
 from plum.parametric import CovariantMeta
 from varz import Vars, minimise_l_bfgs_b
 from varz.spec import Struct
@@ -13,7 +13,7 @@ from varz.spec import Struct
 from .bijection import parse as parse_transform
 
 __all__ = [
-    "convert",
+    "cast",
     "instancemethod",
     "priormethod",
     "posteriormethod",
@@ -25,15 +25,18 @@ __all__ = [
 _dispatch = Dispatcher()
 
 
+_fws_numeric = [B.TFNumeric, B.TorchNumeric, B.JAXNumeric]
+"""list[type]: Numerical types of frameworks to check for."""
+_fws_dtypes = [B.TFDType, B.TorchDType, B.JAXDType]
+"""list[dtype]: Data types corresponding to the `_fws_numeric`."""
+
+
 @_dispatch
 def _same_framework(dtype, a: B.Numeric):
     a_dtype = B.dtype(a)
     # Only check for TensorFlow, PyTorch, and JAX.
     return any(
-        [
-            isinstance(dtype, DType) and isinstance(a_dtype, DType)
-            for DType in [B.TFDType, B.TorchDType, B.JAXDType]
-        ]
+        [isinstance(dtype, fw) and isinstance(a_dtype, fw) for fw in _fws_dtypes]
     )
 
 
@@ -49,147 +52,102 @@ def _same_framework(dtype, a):
 
 
 @_dispatch
-def _convert_input(dtype, rank, a: B.Numeric):
+def _cast(dtype, a: B.Numeric):
     # Only convert floating-point tensors.
     if not B.issubdtype(B.dtype(a), np.floating):
         return a
-    a = B.cast(dtype, a)
-    if B.rank(a) < rank:
-        a = B.uprank(a, rank=rank)
-    elif B.rank(a) > rank:
-        a = B.downrank(a, rank=rank)
-        if B.rank(a) != rank:
-            raise RuntimeError(f"Could not convert input to rank {rank}.")
-    return B.to_active_device(a)
+    # Only convert arrays.
+    if B.is_scalar(a):
+        return a
+    return B.to_active_device(B.cast(dtype, a))
 
 
 @_dispatch
-def _convert_input(dtype, rank, a: Union[bool, int, float]):
-    # Do not convert certain builtins.
-    return a
-
-
-@_dispatch
-def _convert_input(dtype, rank, a):
+def _cast(dtype, a):
     # Do nothing if `a` is not numeric.
     return a
 
 
 @_dispatch
-def _on_gpu_if_possible(dtype: B.NPDType):
-    return contextlib.suppress()
-
-
-@_dispatch
-def _on_gpu_if_possible(dtype: B.TorchDType):
-    import torch
-
-    if torch.cuda.is_available():
-        return B.on_device("cuda")
-    else:
-        return contextlib.suppress()
-
-
-@_dispatch
-def _on_gpu_if_possible(dtype: B.TFDType):
-    import tensorflow as tf
-
-    if len(tf.config.list_physical_devices("gpu")) >= 1:
-        return B.on_device("gpu")
-    else:
-        return contextlib.suppress()
-
-
-@_dispatch
-def _on_gpu_if_possible(dtype: B.JAXDType):
-    import jax
-
-    gpus = [d for d in jax.devices() if "gpu" in str(d).lower()]
-    if len(gpus) >= 1:
-        return B.on_device(gpus[0])
-    else:
-        return contextlib.suppress()
-
-
-@_dispatch
-def _convert_output_to_np(x: B.Numeric):
+def _to_np(x: B.Numeric):
     return B.to_numpy(x)
 
 
 @_dispatch
-def _convert_output_to_np(xs: list):
-    return [_convert_output_to_np(x) for x in xs]
+def _to_np(xs: list):
+    return [_to_np(x) for x in xs]
 
 
 @_dispatch
-def _convert_output_to_np(xs: tuple):
-    return tuple(_convert_output_to_np(x) for x in xs)
+def _to_np(xs: tuple):
+    return tuple(_to_np(x) for x in xs)
 
 
 @_dispatch
-def _convert_output_to_np(d: dict):
-    return {k: _convert_output_to_np(v) for k, v in d.items()}
+def _to_np(d: dict):
+    return {k: _to_np(v) for k, v in d.items()}
 
 
 @_dispatch
-def _convert_output_to_np(x):
+def _to_np(x):
     # Default to not converting.
     return x
 
 
-def convert(f=None, rank=2, gpu=True):
-    """Create a decorator which automatically converts argument to the right framework
-    and the right data type, converts the tensors to a given rank, and automatically
-    converts back the output to NumPy if none of the arguments were of the same right
-    framework. It also automatically runs the method on the GPU if one is available.
+@_dispatch
+def _safe_dtype(x):
+    try:
+        return B.dtype(x)
+    except AttributeError:
+        # Return a very small data type.
+        return np.bool
 
-    Args:
-        rank (int, optional): Rank of arguments. Defaults to `2`.
-        gpu (bool, optional): Automatically run the method on the GPU if one is
-            available.
 
-    Returns:
-        function: Decorator.
+@_dispatch
+def _safe_dtype(*xs):
+    return _safe_dtype(xs)
+
+
+@_dispatch
+def _safe_dtype(xs: tuple):
+    if len(xs) == 0:
+        # Return a very small data type.
+        return np.bool
+    else:
+        return B.promote_dtypes(*(_safe_dtype(x) for x in xs))
+
+
+@_dispatch
+def _safe_dtype(d: dict):
+    return _safe_dtype(tuple(d.values()))
+
+
+def cast(f):
+    """Decorator which automatically converts argument to the right framework
+    and the right data type and automatically converts back the output to NumPy if none
+    of the arguments were of the same right framework.
     """
 
-    def decorator(f):
-        @wraps(f)
-        def f_wrapped(self, *args, **kw_args):
-            # Convert the result to NumPy if none of the arguments or keyword arguments
-            # are in the same framework.
-            res_to_np = not (
-                any(_same_framework(self.dtype, arg) for arg in args)
-                or any(_same_framework(self.dtype, v) for v in kw_args.values())
-            )
+    @wraps(f)
+    def f_wrapped(self, *args, **kw_args):
+        # Convert the result to NumPy if none of the arguments or keyword arguments
+        # are in the same framework.
+        res_to_np = not (
+            any(_same_framework(self.dtype, arg) for arg in args)
+            or any(_same_framework(self.dtype, v) for v in kw_args.values())
+        )
 
-            def convert_and_run():
-                # Perform conversion and run wrapped function.
-                converted_args = tuple(
-                    _convert_input(self.dtype, rank, arg) for arg in args
-                )
-                convert_kw_args = {
-                    k: _convert_input(self.dtype, rank, v) for k, v in kw_args.items()
-                }
-                return f(self, *converted_args, **convert_kw_args)
+        # Perform conversion and run wrapped function.
+        args = tuple(_cast(self.dtype, arg) for arg in args)
+        kw_args = {k: _cast(self.dtype, v) for k, v in kw_args.items()}
+        res = f(self, *args, **kw_args)
 
-            if gpu:
-                # Run on the GPU, if possible.
-                with _on_gpu_if_possible(self.dtype):
-                    res = convert_and_run()
-            else:
-                res = convert_and_run()
+        if res_to_np:
+            return _to_np(res)
+        else:
+            return res
 
-            if res_to_np:
-                return _convert_output_to_np(res)
-            else:
-                return res
-
-        return f_wrapped
-
-    if f is None:
-        return decorator
-    else:
-        return decorator(f)
+    return f_wrapped
 
 
 def instancemethod(f):
@@ -200,7 +158,7 @@ def instancemethod(f):
     def f_wrapped(self, *args, **kw_args):
         if not self.instantiated:
             # Attempt to automatically instantiate.
-            self = self(self.vs)
+            self = self()
         return f(self, *args, **kw_args)
 
     return f_wrapped
@@ -232,7 +190,7 @@ class _PendingFunction:
         # Prior and posterior methods are instance methods.
         if not instance.instantiated:
             # Attempt to automatically instantiate.
-            instance = instance(instance.vs)
+            instance = instance()
 
         # Find the right method.
         if instance.posterior:
@@ -269,19 +227,46 @@ def format_class_of(x):
 class Model(metaclass=CovariantMeta):
     """A probabilistic model."""
 
-    def __call__(self, ps=None, *args, **kw_args):
+    def __call__(self, *args, **kw_args):
         """Instantiate the model.
 
+        The first argument can be a parameter struct of type :class:`varz.Vars` or
+        :class:`varz.Struct`, which will populate `self.ps`. If no such first argument
+        is given, the parameter struct will be attempt to be extracted from `self.vs`.
+        If `self.vs` also is not populated, the right data type will be attempted to
+        be extracted from the arguments of the call.
+
         Args:
-            ps (:class:`varz.Vars` or :class:`varz.Struct`, optional): Parameter to
-                instantiate the model with. If no arguments are given, this will default
-                to `self.vs`.
             *args (object): Arguments to be passed to `__prior__`.
             **kw_args (object): Keyword arguments to be passed to `__prior__`.
         """
         instance = copy.copy(self)
         instance.instantiated = True
-        instance.ps = ps if ps is not None else instance.vs.struct
+        if len(args) >= 1 and isinstance(args[0], (Vars, Struct)):
+            instance._set_ps(args[0])
+            args = args[1:]
+        else:
+            try:
+                instance._set_ps(instance.vs)
+            except AttributeError:
+                # Try to determine data type from arguments.
+                fw_hits = [
+                    any([isinstance(x, t) for x in args + tuple(kw_args.values())])
+                    for t in _fws_numeric
+                ]
+                # Determine the data type and promote to floats.
+                dtype = B.promote_dtypes(_safe_dtype(args, kw_args), np.float16)
+                if sum(fw_hits) > 1:
+                    raise ValueError(
+                        "Instantiated the model with a mixture of frameworks. Cannot "
+                        "determine data type from arguments."
+                    )
+                elif sum(fw_hits) == 1:
+                    print(fw_hits)
+                    instance.dtype = convert(dtype, _fws_dtypes[fw_hits.index(True)])
+                else:
+                    # No framework hits. Just use NumPy.
+                    instance.dtype = convert(dtype, B.NPDType)
         instance.__prior__(*args, **kw_args)
         return instance.instantiator(instance)
 
@@ -308,15 +293,14 @@ class Model(metaclass=CovariantMeta):
         self._instantiator = instantiator
 
     @property
+    def prior(self):
+        """bool: Boolean indicated whether the model is conditioned or not."""
+        return not self.posterior
+
+    @property
     def posterior(self):
         """bool: Boolean indicated whether the model is conditioned or not."""
-        if self.instantiated:
-            return hasattr(self, "_posterior") and self._posterior
-        else:
-            raise RuntimeError(
-                "Cannot determine whether an uninstantiated model is conditioned or "
-                "not."
-            )
+        return hasattr(self, "_posterior") and self._posterior
 
     @property
     def ps(self):
@@ -329,14 +313,12 @@ class Model(metaclass=CovariantMeta):
             )
         return self._ps
 
-    @ps.setter
     @_dispatch
-    def ps(self, vs: Vars):
+    def _set_ps(self, vs: Vars):
         self._ps = vs.struct
 
-    @ps.setter
     @_dispatch
-    def ps(self, ps: Struct):
+    def _set_ps(self, ps: Struct):
         self._ps = ps
 
     @property
@@ -355,16 +337,33 @@ class Model(metaclass=CovariantMeta):
     def dtype(self):
         """dtype: If the model is instantiated, data type of the model parameters. If
         the model is not instantiated, data type of the attached variable container."""
-        if self.instantiated:
-            return self.ps._vs.dtype
-        else:
-            return self.vs.dtype
+        try:
+            if self.instantiated:
+                return self.ps._vs.dtype
+            else:
+                return self.vs.dtype
+        except AttributeError as e:
+            if hasattr(self, "_dtype"):
+                return self._dtype
+            else:
+                raise e
+
+    @dtype.setter
+    def dtype(self, dtype):
+        if hasattr(self, "_ps") or hasattr(self, "_vs"):
+            raise AttributeError(
+                "Cannot set data type: attribute `vs` or `ps` exists, which determines "
+                "the data type."
+            )
+        self._dtype = dtype
 
     @property
     def num_outputs(self):
         """int: Number of outputs."""
         if not hasattr(self, "_num_outputs") or self._num_outputs is None:
-            raise RuntimeError("Number of outputs is requested, but not (yet) defined.")
+            raise AttributeError(
+                "Number of outputs is requested, but not (yet) defined."
+            )
         return self._num_outputs
 
     @num_outputs.setter
@@ -397,21 +396,19 @@ class Model(metaclass=CovariantMeta):
     @property
     def noiseless(self):
         """:class:`.ProbabilisticModel`: Noiseless version of the model."""
-        instance = copy.copy(self)
+        if self.instantiated:
+            self.__noiseless__()
+            return self
+        else:
 
-        def instantiator(*args, **kw_args):
-            model = self.instantiator(*args, **kw_args)
-            res = model.__noiseless__()
-            if res is None:
-                # Assume that `model` was modified.
+            def instantiator(*args, **kw_args):
+                model = self.instantiator(*args, **kw_args)
+                model.__noiseless__()
                 return model
-            else:
-                # The return value is the noiseless model.
-                return res
 
-        instance.instantiator = instantiator
-
-        return instance
+            instance = copy.copy(self)
+            instance.instantiator = instantiator
+            return instance
 
     def logpdf(self, x, y):
         """Compute the logpdf of observations.
@@ -437,23 +434,21 @@ class Model(metaclass=CovariantMeta):
         Returns:
             :class:`.Model`: A posterior version of the model.
         """
-        instance = copy.copy(self)
+        if self.instantiated:
+            self.__condition__(*condition_args, **condition_kw_args)
+            self._posterior = True
+            return self
+        else:
 
-        def instantiator(*args, **kw_args):
-            model = self.instantiator(*args, **kw_args)
-            res = model.__condition__(*condition_args, **condition_kw_args)
-            if res is None:
-                # Assume that `model` was modified.
+            def instantiator(*args, **kw_args):
+                model = self.instantiator(*args, **kw_args)
+                model.__condition__(*condition_args, **condition_kw_args)
                 model._posterior = True
                 return model
-            else:
-                # The return value is the conditioned model.
-                res._posterior = True
-                return res
 
-        instance.instantiator = instantiator
-
-        return instance
+            instance = copy.copy(self)
+            instance.instantiator = instantiator
+            return instance
 
     def sample(self, x):
         """Sample from the model.
@@ -487,12 +482,12 @@ class Model(metaclass=CovariantMeta):
         fit(self, *args, **kw_args)
 
     @_dispatch
-    def _(self):
+    def _(self):  # pragma: no cover
         pass  # This method is necessary for dispatch to work.
 
 
 @_dispatch
-def _as_vars(x: Union[Vars, Struct]):
+def _as_vars(x: Vars):
     return x
 
 
@@ -524,7 +519,7 @@ class Transformed(Model):
     def __prior__(self):
         self.model = self.model(self.ps)
 
-    @convert
+    @cast
     def __condition__(self, x, y):
         self.model.__condition__(x, self.data_transform(y))
 
@@ -532,18 +527,18 @@ class Transformed(Model):
         self.model.__noiseless__()
 
     @instancemethod
-    @convert
+    @cast
     def logpdf(self, x, y):
         y_transformed = self.data_transform(y)
         return self.model.logpdf(x, y_transformed) + self.data_transform.logdet(y)
 
     @instancemethod
-    @convert
+    @cast
     def sample(self, x):
         return self.data_transform.untransform(self.model.sample(x))
 
     @instancemethod
-    @convert
+    @cast
     def predict(self, x):
         return self.data_transform.untransform(self.model.predict(x))
 
@@ -551,15 +546,9 @@ class Transformed(Model):
     def num_outputs(self):
         return self.model.num_outputs
 
-    def __getattr__(self, item):
-        if item.startswith("_"):
-            raise AttributeError(f"Attribute `{item}` not found.")
-        else:
-            return getattr(self.model, item)
-
 
 @_dispatch
-@convert
+@cast
 def fit(model, x, y, minimiser=minimise_l_bfgs_b, trace=True, **kw_args):
     """Fit the model.
 

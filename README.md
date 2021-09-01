@@ -14,10 +14,12 @@ Contents:
     - [What is the Problem?](#what-is-the-problem)
     - [Basic Principles](#basic-principles)
         - [Models and Instances](#models-and-instances)
-        - [Convenience: `@convert`](#convenience-convert)
+        - [Automatic Argument Casting: `@cast`](#automatic-argument-casting-cast)
+        - [Paramaters Without Varz](#parameters-without-varz)
         - [Details of Model Instantiation](#details-of-model-instantiation)
         - [Automatic Model Instantiation: `@instancemethod`](#automatic-model-instantiation-instancemethod)
         - [Description of Models](#description-of-models)
+        - [Prior and Posterior Methods: `@priormethod` and `@posteriormethod`]()
     - [Model Fitting](#model-fitting)
     - [`Transformed`](#transformed)
     - [Automatic Model Tests](#automatic-model-tests)
@@ -142,7 +144,7 @@ import numpy as np
 import tensorflow as tf
 from stheno import EQ, GP
 
-from probmods import Model, instancemethod, convert, Transformed
+from probmods import Model, instancemethod, cast, Transformed
 
 # Increase regularisation for `float32`s.
 B.epsilon = 1e-6
@@ -150,40 +152,40 @@ B.epsilon = 1e-6
 
 class GPModel(Model):
     def __init__(self, init_variance, init_length_scale, init_noise):
-        self.variance = init_variance
-        self.length_scale = init_length_scale
-        self.noise = init_noise
+        self.init_variance = init_variance
+        self.init_length_scale = init_length_scale
+        self.init_noise = init_noise
 
     def __prior__(self):
         """Construct the prior of the model."""
-        self.variance = self.ps.variance.positive(self.variance)
-        self.length_scale = self.ps.length_scale.positive(self.length_scale)
+        variance = self.ps.variance.positive(self.init_variance)
+        length_scale = self.ps.length_scale.positive(self.init_length_scale)
         self.f = GP(variance * EQ().stretch(length_scale))
-        self.noise = self.ps.noise.positive(self.noise)
+        self.noise = self.ps.noise.positive(self.init_noise)
 
     def __noiseless__(self):
         """Transform the model into a noiseless one."""
         self.noise = 0
 
-    @convert
+    @cast
     def __condition__(self, x, y):
         """Condition the model on data."""
         self.f = self.f | (self.f(x, self.noise), y)
 
     @instancemethod
-    @convert
+    @cast
     def logpdf(self, x, y):
         """Compute the log-pdf."""
         return self.f(x).logpdf(y)
 
     @instancemethod
-    @convert
+    @cast
     def predict(self, x):
         """Make predictions at new input locations."""
         return self.f(x, self.noise).marginals()
 
     @instancemethod
-    @convert
+    @cast
     def sample(self, x):
         """Sample at new input locations."""
         return self.f(x, self.noise).sample()
@@ -325,7 +327,7 @@ benefits:
 
 * *Composability:* Models can easily be used as components in bigger models.
 
-#### Convenience: `@convert`
+#### Automatic Argument Casting: `@cast`
 
 Although the internal variables of `instance` are TensorFlow tensors,
 you can simply feed a NumPy array to `instance.sample`.
@@ -348,7 +350,7 @@ array([[0.58702797],
        [-2.4540234]], dtype=float32)
 ```
 
-This behaviour is due to the `@convert` decorator, which automatically
+This behaviour is due to the `@cast` decorator, which automatically
 converts NumPy arguments  to the right framework (in this case, TensorFlow) and
 the right data type (in this case, `tf.float32`).
 Moreover, if _only_ NumPy arguments were given, `probmods` then also converts
@@ -371,25 +373,49 @@ array([[ 0.37403315],
        [-0.47107112]], dtype=float32)>
 ```
 
-The rules for `@convert` are as follows:
+#### Parameters Without Varz
 
-* Every argument which is a NumPy array is automatically converted to the
-  appropriate framework and the approprate data type.
-  
-* Every array argument is ensured to be a tensor of at least rank 2, which is
-  achieved by added empty dimensions. You can specify another minimum rank, like
-  0 or 1, by using `@convert(rank=0)`.
+Although the package is integrated with [Varz](http://github.com/wesselb/varz)
+to make parameter management as painless as possible, you are not forced to use
+Varz.
+If you do not want to use Varz, you should give the appropriate parameters 
+when you call `model` to instantiate it; these parameters which will then be
+passed to `__prior__`.
+Here's how `GPModel` could be modified to work in this way:
 
-* Every argument is automatically moved to the GPU, if one is available. You
-  can disable this behaviour by using `@convert(gpu=False)`.
+```python
+...
+
+class GPModel(Model):
+    def __prior__(self, variance, length_scale, noise):
+        """Construct the prior of the model."""
+        self.f = GP(variance * EQ().stretch(length_scale))
+        self.noise = noise
     
-* If the arguments contained _only_ NumPy arrays, then any framework types,
-  like TensorFlow tensors, are automatically converted back to NumPy arrays.
+    ...
+```
+
+Note that specifying the initial values of the parameters in the constructor is
+not necessary anymore, because all parameter values are given to `__prior__`
+upon instantiation.
+
+```python
+>>> model = GPModel()
+
+>>> instance = model(1, 1, 0.1)
+
+>>> instance.f
+GP(0, EQ() > 1)
+
+>>> instance.noise
+0.1
+```
+
 
 #### Details of Model Instantiation
 
-When `model` is instantiated by calling it with `parameters`, the following
-happens:
+When `model` is instantiated by calling it as `model(*args, **kw_args)`,
+the following happens:
 
 1. First of all, the model is _copied_ to safely allow mutation of the copy: 
 
@@ -401,22 +427,27 @@ happens:
     If a shallow copy is not appropriate, then you should implement
    `instance.__copy__`.
     
-2. The parameters are stored in the internal variable `ps`
-   (short for parameters):
-
-   ```python
-   instance.ps = parameters
-   ```
+2. If the first argument to `model` was variable container of type `varz.Vars`
+   or a parameter struct of type `varz.spec.Struct`, `instance.ps` (short for
+   parameters) is set to extract parameters from it.
+   If no such argument was given, `instance.ps` will extract parameters from
+   `model.vs`, if `model.vs` exists.
+   If also `instance.vs` does not exist, `instance.ps` will remain unavailable.
+   Whatever case happens, `instance.dtype` will reflect the data type
+   of the parameters or arguments with which `model` was instantiated (`args`,
+   and `kw_args`).
 
 3. The prior is constructed:
 
     ```python
-    instance.__prior__()
+    instance.__prior__(*args, **kw_args)
     ```
 
+    The arguments `args` and keyword arguments `kw_args` are those given
+    to the model to instantiate it: `model(*args, **kw_args)`.
     Calling `instance.__prior__()` mutates `instance`, but that's fine, because
     `instance` is a copy of the original, so no harm done.
-    The implementation of `instance.__prior__` can make use of parameters
+    The implementation of `instance.__prior__` can access learnable parameters
     through `instance.ps`.
     
 
@@ -429,9 +460,6 @@ happens:
    
     instance.__noiseless__()
     ```
-   
-    The implementations of `instance.__condition__` and `instance.__noiseless__`
-    can also make use of parameters through `instance.ps`.
    
 5. We're done! The result `instance` is returned. `instance` is populated with
    parameters, has constructed its prior, and has done any potential
@@ -492,69 +520,115 @@ The `Model` class offers the following properties:
 | `model.vs`           |  A variable container which will be used to automatically instantiate the model when an `@instancemethod` is called uninstantiated. You need to explicitly assign a variable container to `model.vs`. |
 | `model.ps`           | Once the model is instantiated, `model.ps` (or `self.ps` from within the class) can be used to initialise constrained variables. `model.ps` is not available for uninstantiated models. As an example, after instantiation, `self.ps.parameter_group.matrix.orthogonal(shape=(5, 5))` returns a randomly initialised orthogonal matrix of shape `(5, 5)` named `parameter_group.matrix`. `ps` behaves like a nested struct, dictionary, or list. See [Varz](https://github.com/wesselb/varz#structlike-specification) for more details. |
 | `model.instantiated` | `True` if `model` is instantiated and `False` otherwise. |
-| `model.posterior`    | `True` if `model` is a conditioned. Throws an exception if `model` is not instantiated. |
-| `model.dtype`        | If the model is instantiated, this return the data type of `model.ps`. If the model is not instantiated, this attempts to returns the data type of `model.vs` |
+| `model.prior`        | `True` if `model` _is not_ conditioned. Throws an exception if `model` is not instantiated. |
+| `model.posterior`    | `True` if `model` _is_ conditioned. Throws an exception if `model` is not instantiated. |
+| `model.dtype`        | If the model is instantiated, this return the data type of `model.ps`. If the model is not instantiated, this attempts to returns the data type of `model.vs`. If neither `model.ps` nor `model.vs` is available, the data type is automatically determined from the arguments to `model.__prior__`. |
 | `model.num_outputs`  | A convenience property which can be set to the number of outputs of the model. |
 
 When you subclass `Model`, you can implement the following methods:
 
-| Method                           | Description |
-| --                               | -- |
-| `__prior__(self)`           | Construct the prior of the model. |
-| `__condition__(self, x, y)` | The prior was previously constructed. Update the model by conditioning on `(x, y)`. You may want to use `@convert`. You can either return the conditioned model or mutate the current model and return nothing.  |
-| `__noiseless__(self)`       | Remove noise from the current model. You can either return the noiseless model or mutate the current model and return nothing. |
-| `logpdf(self, x, y)`        | Compute the logpdf for `(x, y)`. This needs to be an `@instancemethod` and you may want to use `@convert`. |
-| `sample(self, x)`           | Sample at inputs `x`. This needs to be an `@instancemethod` and you may want to use `@convert`. |
-| `predict(self)`             | Predict at inputs `x`. The default implementation samples and computes the mean and variance of these samples, but you can override this implementation. This needs to be an `@instancemethod` and you may want to use `@convert`. |
+| Method                              | Description |
+| --                                  | -- |
+| `__prior__(self, *args, *kw_args)`  | Construct the prior of the model. |
+| `__condition__(self, x, y)`         | The prior was previously constructed. Update the model by conditioning on `(x, y)`. You may want to use `@convert`. You can either return the conditioned model or mutate the current model and return nothing.  |
+| `__noiseless__(self)`               | Remove noise from the current model. You can either return the noiseless model or mutate the current model and return nothing. |
+| `logpdf(self, x, y)`                | Compute the logpdf for `(x, y)`. This needs to be an `@instancemethod` and you may want to use `@convert`. |
+| `sample(self, x)`                   | Sample at inputs `x`. This needs to be an `@instancemethod` and you may want to use `@convert`. |
+| `predict(self)`                     | Predict at inputs `x`. The default implementation samples and computes the mean and variance of these samples, but you can override this implementation. This needs to be an `@instancemethod` and you may want to use `@convert`. |
 
 For reference, we again show the implementation of `GPModel` here:
 
 ```python
 from stheno import EQ, GP
 
-from probmods import Model, instancemethod, convert, Transformed
+from probmods import Model, instancemethod, cast
 
 
 class GPModel(Model):
     def __init__(self, init_variance, init_length_scale, init_noise):
-        self.variance = init_variance
-        self.length_scale = init_length_scale
-        self.noise = init_noise
+        self.init_variance = init_variance
+        self.init_length_scale = init_length_scale
+        self.init_noise = init_noise
 
     def __prior__(self):
         """Construct the prior of the model."""
-        self.variance = self.ps.variance.positive(self.variance)
-        self.length_scale = self.ps.length_scale.positive(self.length_scale)
+        variance = self.ps.variance.positive(self.init_variance)
+        length_scale = self.ps.length_scale.positive(self.init_length_scale)
         self.f = GP(variance * EQ().stretch(length_scale))
-        self.noise = self.ps.noise.positive(self.noise)
+        self.noise = self.ps.noise.positive(self.init_noise)
 
     def __noiseless__(self):
         """Transform the model into a noiseless one."""
         self.noise = 0
 
-    @convert
+    @cast
     def __condition__(self, x, y):
         """Condition the model on data."""
         self.f = self.f | (self.f(x, self.noise), y)
 
     @instancemethod
-    @convert
+    @cast
     def logpdf(self, x, y):
         """Compute the log-pdf."""
         return self.f(x).logpdf(y)
 
     @instancemethod
-    @convert
+    @cast
     def predict(self, x):
         """Make predictions at new input locations."""
         return self.f(x, self.noise).marginals()
 
     @instancemethod
-    @convert
+    @cast
     def sample(self, x):
         """Sample at new input locations."""
         return self.f(x, self.noise).sample()
 ```
+
+#### Prior and Posterior Methods: `@priormethod` and `@posteriormethod`
+
+It might be that the implementation for an operation, like sampling, is
+different (and typically more complicated) for the posterior, _i.e._ after
+the model is conditioned on data.
+You can use the decorators `@priormethod` and `@posteriormethod` to provide
+different implementations for the prior and the posterior.
+These decorators will also automatically instantiate the model, so there is
+no need for an additional `@instancemethod`.
+
+Example:
+
+```python
+from probmods import Model, priormethod, posteriormethod
+
+class MyModel(Model):
+    def __prior__(self):
+        pass
+    
+    def __condition__(self):
+        pass
+    
+    @priormethod
+    def sample(self):
+        return "sample from the prior"
+    
+    @posteriormethod
+    def sample(self):
+        return "sample from the posterior"
+```
+
+```python
+>>> model = MyModel()
+
+>>> model.sample()
+'sample from the prior'
+
+>>> model.condition().sample()
+'sample from the posterior'
+```
+
+**Important note:**
+The decorators `@priormethod` and `@posteriormethod` should always be the
+_outermost_ ones.
 
 ### `Transformed`
 

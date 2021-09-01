@@ -67,7 +67,7 @@ def test_identity(shape, args):
 
 
 def _zeros_to_ones(x):
-    if B.isscalar(x):
+    if B.is_scalar(x):
         if x == 0:
             return 1
         else:

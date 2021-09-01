@@ -8,7 +8,7 @@ _dispatch = Dispatcher()
 
 
 @_dispatch
-def approx(x, y, atol=1e-10, rtol=1e-8):
+def approx(x, y, atol=1e-10, rtol=1e-8, assert_dtype=False):
     """Assert that two numerical inputs are equal.
 
     Args:
@@ -16,6 +16,7 @@ def approx(x, y, atol=1e-10, rtol=1e-8):
         y (tensor): Second input.
         atol (float, optional): Absolute tolerance. Defaults to `1e-10`.
         rtol (float, optional): Relative tolerance. Defaults to `1e-8`.
+        assert_dtype (bool, optional): Assert that `x` and `y` have the same data type.
     """
     assert_allclose(
         B.to_numpy(B.dense(x)),
@@ -23,6 +24,8 @@ def approx(x, y, atol=1e-10, rtol=1e-8):
         atol=atol,
         rtol=rtol,
     )
+    if assert_dtype:
+        assert B.dtype(x) == B.dtype(x)
 
 
 @_dispatch
