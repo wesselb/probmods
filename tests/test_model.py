@@ -1,8 +1,8 @@
 import lab as B
 import lab.tensorflow  # noqa
-import lab.torch  # noqa
+import lab.jax  # noqa
 import numpy as np
-import torch
+import jax.numpy as jnp
 import pytest
 import tensorflow as tf
 from stheno import EQ, GP
@@ -267,7 +267,7 @@ def test_model_instantiation():
     # Check that frameworks cannot be mixed.
     with pytest.raises(ValueError):
         model = MyModel()
-        model(B.ones(tf.float32, 2), keyword=B.ones(torch.float32, 2))
+        model(B.ones(tf.float32, 2), keyword=B.ones(jnp.float32, 2))
 
 
 def test_copy():
