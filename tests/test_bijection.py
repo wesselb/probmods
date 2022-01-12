@@ -1,10 +1,25 @@
 import jax
+import jax.numpy as jnp
 import lab.jax as B
+import tensorflow as tf
+import numpy as np
 import pytest
-from stheno import Normal
 from matrix import TiledBlocks
+from plum import NotFoundLookupError
+from stheno import Normal
+from varz import Vars
 
-from probmods.bijection import Identity, Log, Squishing, Composition, Normaliser, parse
+from probmods.bijection import (
+    Bijection,
+    Identity,
+    Log,
+    Squishing,
+    _ensure_maybe_parameters_list,
+    Composition,
+    _safe,
+    Normaliser,
+    parse,
+)
 from .util import approx
 
 
@@ -47,6 +62,25 @@ def check_bijection_simple(bijection, x):
     approx(bijection.untransform(y), x)
 
 
+def test_fallback_methods():
+    class MyBijection(Bijection):
+        pass
+
+    b = MyBijection()
+
+    with pytest.raises(NotFoundLookupError) as e:
+        b(1)
+    assert "No bijection `transform` implementation" in str(e.value)
+
+    with pytest.raises(NotFoundLookupError) as e:
+        b.untransform(1)
+    assert "No bijection `untransform` implementation" in str(e.value)
+
+    with pytest.raises(NotFoundLookupError) as e:
+        b.logdet(1)
+    assert "No bijection `logdet` implementation" in str(e.value)
+
+
 shape_args = [
     ((), ()),
     ((), (0,)),
@@ -64,6 +98,28 @@ shape_args = [
 @pytest.mark.parametrize("shape, args", shape_args)
 def test_identity(shape, args):
     check_bijection(Identity(), B.randn(*shape), *args)
+
+
+def test_safe():
+    def f_safe(x, y):
+        return B.nanmean(_safe(B.multiply, x, y))
+
+    def f_unsafe(x, y):
+        return B.nanmean(x * y)
+
+    x = tf.constant([1.0, np.nan, 2.0])
+    y = tf.constant([3.0])
+
+    with tf.GradientTape() as tape:
+        tape.watch(y)
+        grad_unsafe = tape.gradient(f_unsafe(x, y), y)[0]
+
+    with tf.GradientTape() as tape:
+        tape.watch(y)
+        grad_safe = tape.gradient(f_safe(x, y), y)[0]
+
+    assert B.isnan(grad_unsafe)
+    assert grad_safe == 1.5
 
 
 def _zeros_to_ones(x):
@@ -211,6 +267,23 @@ def test_log_tuple(shape_train, shape_eval):
 @pytest.mark.parametrize("shape, args", shape_args)
 def test_squishing(shape, args):
     check_bijection(Squishing(), B.randn(*shape), *args)
+
+
+def test_ensure_maybe_parameters_list():
+    def path_equal(x, y):
+        return [xi._path for xi in x] == [yi._path for yi in y]
+
+    vs = Vars(np.float64)
+
+    assert _ensure_maybe_parameters_list(None, 3) == [None, None, None]
+    assert path_equal(
+        _ensure_maybe_parameters_list(vs, 2),
+        [vs.struct[0], vs.struct[1]],
+    )
+    assert path_equal(
+        _ensure_maybe_parameters_list(vs.struct, 2),
+        [vs.struct[0], vs.struct[1]],
+    )
 
 
 @pytest.mark.parametrize("shape, args", shape_args)

@@ -428,8 +428,14 @@ class GPModel(Model):
         return self.f(x, self.noise).sample()
 
 
-def test_transformed_gp_model():
+@pytest.mark.parametrize("learn_transform", [True, False])
+def test_transformed_gp_model(learn_transform):
     check_model(
-        Transformed(tf.float64, GPModel(1, 1, 1e-2), data_transform="normalise"),
+        Transformed(
+            tf.float64,
+            GPModel(1, 1, 1e-2),
+            transform="normalise",
+            learn_transform=learn_transform,
+        ),
         tf.float64,
     )
