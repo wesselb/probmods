@@ -1,7 +1,7 @@
 # [ProbMods: Probabilistic Models](http://github.com/wesselb/probmods)
 
 [![CI](https://github.com/wesselb/probmods/workflows/CI/badge.svg)](https://github.com/wesselb/probmods/actions?query=workflow%3ACI)
-[![Coverage Status](https://coveralls.io/repos/github/wesselb/probmods/badge.svg?branch=master)](https://coveralls.io/github/wesselb/probmods?branch=master)
+[![Coverage Status](https://coveralls.io/repos/github/wesselb/probmods/badge.svg?branch=master&service=github)](https://coveralls.io/github/wesselb/probmods?branch=master)
 [![Latest Docs](https://img.shields.io/badge/docs-latest-blue.svg)](https://wesselb.github.io/probmods)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -15,7 +15,7 @@ Contents:
     - [Basic Principles](#basic-principles)
         - [Models and Instances](#models-and-instances)
         - [Automatic Argument Casting: `@cast`](#automatic-argument-casting-cast)
-        - [Paramaters Without Varz](#parameters-without-varz)
+        - [Parameters Without Varz](#parameters-without-varz)
         - [Details of Model Instantiation](#details-of-model-instantiation)
         - [Automatic Model Instantiation: `@instancemethod`](#automatic-model-instantiation-instancemethod)
         - [Description of Models](#description-of-models)
@@ -192,7 +192,7 @@ class GPModel(Model):
 
 
 # This model object can easily be inserted anywhere in existing code and be
-# passed around
+# passed around.
 model = Transformed(
     tf.float32,
     GPModel(1, 1, 1e-1),
@@ -355,7 +355,7 @@ array([[0.58702797],
 This behaviour is due to the `@cast` decorator, which automatically
 converts NumPy arguments  to the right framework (in this case, TensorFlow) and
 the right data type (in this case, `tf.float32`).
-Moreover, if _only_ NumPy arguments were given, `probmods` then also converts
+Moreover, if _only_ NumPy arguments were given, `@cast` then also converts
 back to the result to NumPy.
 For example, if we were to pass a TensorFlow tensor, we would get a TensorFlow
 tensor back:
@@ -389,6 +389,7 @@ Here's how `GPModel` could be modified to work in this way:
 ...
 
 class GPModel(Model):
+    @cast
     def __prior__(self, variance, length_scale, noise):
         """Construct the prior of the model."""
         self.f = GP(variance * EQ().stretch(length_scale))
@@ -429,14 +430,14 @@ the following happens:
     If a shallow copy is not appropriate, then you should implement
    `instance.__copy__`.
     
-2. If the first argument to `model` was variable container of type `varz.Vars`
+2. If the first argument to `model` was a variable container of type `varz.Vars`
    or a parameter struct of type `varz.spec.Struct`, `instance.ps` (short for
    parameters) is set to extract parameters from it.
    If no such argument was given, `instance.ps` will extract parameters from
    `model.vs`, if `model.vs` exists.
-   If also `instance.vs` does not exist, `instance.ps` will remain unavailable.
+   If also `model.vs` does not exist, `instance.ps` will remain unavailable.
    Whatever case happens, `instance.dtype` will reflect the data type
-   of the parameters or arguments with which `model` was instantiated (`args`,
+   of the parameters or arguments with which `model` was instantiated (`args`
    and `kw_args`).
 
 3. The prior is constructed:
@@ -589,11 +590,10 @@ class GPModel(Model):
 
 #### Prior and Posterior Methods: `@priormethod` and `@posteriormethod`
 
-It might be that the implementation for an operation, like sampling, is
-different (and typically more complicated) for the posterior, _i.e._ after
-the model is conditioned on data.
+It might be that the implementation of an operation, like sampling, is
+different for the prior and posterior. 
 You can use the decorators `@priormethod` and `@posteriormethod` to provide
-different implementations for the prior and the posterior.
+different implementations for the prior and posterior.
 These decorators will also automatically instantiate the model, so there is
 no need for an additional `@instancemethod`.
 
