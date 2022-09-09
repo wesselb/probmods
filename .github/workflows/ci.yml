@@ -23,9 +23,6 @@ jobs:
           pip install --upgrade pip==20.2.2 setuptools numpy Cython
           pip install --no-cache-dir -U -r requirements.txt | cat
           pip install --upgrade numpy
-      - name: Check style
-        run: |
-          black --check *.py probmods tests
       - name: Test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

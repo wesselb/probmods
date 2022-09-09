@@ -338,7 +338,7 @@ def transform(b: Normaliser, ps: _MaybeParameters, y: Tuple[_Numeric, _Numeric])
     if B.rank(dist_var) in {0, 1, 2}:
         return (
             (dist_mean - mean) / scale,
-            dist_var / scale ** 2,
+            dist_var / scale**2,
         )
     elif B.rank(dist_var) == 3:
         scale = B.uprank(scale, rank=2)
@@ -382,7 +382,7 @@ def untransform(b: Normaliser, ps: _MaybeParameters, y: Tuple[_Numeric, _Numeric
     if B.rank(dist_var) in {0, 1, 2}:
         return (
             dist_mean * scale + mean,
-            dist_var * scale ** 2,
+            dist_var * scale**2,
         )
     elif B.rank(dist_var) == 3:
         scale = B.uprank(scale, rank=2)
@@ -426,7 +426,7 @@ def transform(b: Log, ps: _MaybeParameters, y: Tuple[_Numeric, _Numeric]):
     else:
         raise ValueError(f"Invalid rank {B.rank(log_var)} of the variance.")
     # These are the mean and variance of the log-normal distribution.
-    var = B.log(log_var / log_mean ** 2 + 1)
+    var = B.log(log_var / log_mean**2 + 1)
     return (B.log(log_mean) - 0.5 * var, var)
 
 
