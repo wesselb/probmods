@@ -268,7 +268,7 @@ If a shallow copy is not appropriate, you should implement `model.__copy__`.
 
 The object `model` acts like a function from parameters to instances of model.
 To demonstrate this, we first need to create parameters.
-`probmods` uses [Varz](https://github.com/varz) manage parameters:
+`probmods` uses [Varz](https://github.com/wesselb/varz) manage parameters:
 
 ```python
 >>> from varz import Vars
