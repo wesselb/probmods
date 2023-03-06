@@ -1,23 +1,23 @@
-import lab as B
-import lab.tensorflow  # noqa
-import lab.jax  # noqa
-import numpy as np
 import jax.numpy as jnp
+import lab as B
+import lab.jax  # noqa
+import lab.tensorflow  # noqa
+import numpy as np
 import pytest
 import tensorflow as tf
-from stheno import EQ, GP
-from varz import Vars
-
+from plum import isinstance
 from probmods import (
     Model,
-    instancemethod,
-    priormethod,
-    posteriormethod,
-    cast,
     Transformed,
+    cast,
+    instancemethod,
+    posteriormethod,
+    priormethod,
 )
-from probmods.model import _same_framework, _cast, _to_np, _safe_dtype, format_class_of
+from probmods.model import _cast, _safe_dtype, _same_framework, _to_np, format_class_of
 from probmods.test import check_model
+from stheno import EQ, GP
+from varz import Vars
 
 
 def test_same_framework():

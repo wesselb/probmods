@@ -1,19 +1,12 @@
 import inspect
 import re
+from typing import Tuple, Union
 
 import lab as B
 from matrix import AbstractMatrix, TiledBlocks
-from plum import (
-    Union,
-    Dispatcher,
-    Tuple,
-    parametric,
-    Signature,
-    type_of,
-    NotFoundLookupError,
-)
+from plum import Dispatcher, NotFoundLookupError, parametric
 from plum.parametric import CovariantMeta
-from varz import Vars, Struct
+from varz import Struct, Vars
 
 __all__ = [
     "Bijection",
@@ -87,10 +80,7 @@ class Bijection(metaclass=CovariantMeta):
 def transform(b: Bijection, x, *args):
     # Prevent recursion.
     if x is None:
-        sig = Signature(type_of(b), *(type_of(y) for y in (x,) + args))
-        raise NotFoundLookupError(
-            f"No bijection `transform` implementation for signature {sig}."
-        )
+        raise NotFoundLookupError(f"No bijection `transform` implementation for `{b}`.")
     return transform(b, None, x, *args)
 
 
@@ -98,9 +88,8 @@ def transform(b: Bijection, x, *args):
 def untransform(b: Bijection, y, *args):
     # Prevent recursion.
     if y is None:
-        sig = Signature(type_of(b), *(type_of(x) for x in (y,) + args))
         raise NotFoundLookupError(
-            f"No bijection `untransform` implementation for signature {sig}."
+            f"No bijection `untransform` implementation for `{b}`."
         )
     return untransform(b, None, y, *args)
 
@@ -109,10 +98,7 @@ def untransform(b: Bijection, y, *args):
 def logdet(b: Bijection, x, *args):
     # Prevent recursion.
     if x is None:
-        sig = Signature(type_of(b), *(type_of(y) for y in (x,) + args))
-        raise NotFoundLookupError(
-            f"No bijection `logdet` implementation for signature {sig}."
-        )
+        raise NotFoundLookupError(f"No bijection `logdet` implementation {b}.")
     return logdet(b, None, x, *args)
 
 
@@ -247,7 +233,6 @@ class Normaliser(Bijection):
 
         else:
             if fit:
-
                 if B.rank(x) == 0:
                     self._mean = x
                     self._scale = 1

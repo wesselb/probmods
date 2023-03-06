@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 requirements = [
     "numpy>=1.16",
-    "plum-dispatch>=1.5.2",
+    "plum-dispatch>=2",
     "backends",
     "backends-matrix",
     "varz",

@@ -1,11 +1,10 @@
 import copy
-import warnings
-from functools import wraps, partial
+from functools import partial, wraps
 from types import FunctionType
 
 import numpy as np
 from lab import B
-from plum import Dispatcher, parametric, Union, convert
+from plum import Dispatcher, convert, isinstance, parametric
 from plum.parametric import CovariantMeta
 from varz import Vars, minimise_l_bfgs_b
 from varz.spec import Struct
