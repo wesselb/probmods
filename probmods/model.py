@@ -99,7 +99,7 @@ def _safe_dtype(x):
         return B.dtype(x)
     except AttributeError:
         # Return a very small data type.
-        return np.bool
+        return bool
 
 
 @_dispatch
@@ -111,7 +111,7 @@ def _safe_dtype(*xs):
 def _safe_dtype(xs: tuple):
     if len(xs) == 0:
         # Return a very small data type.
-        return np.bool
+        return bool
     else:
         return B.promote_dtypes(*(_safe_dtype(x) for x in xs))
 

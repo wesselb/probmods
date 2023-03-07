@@ -56,11 +56,11 @@ def test_to_np():
 
 def test_safe_dtype():
     assert _safe_dtype(1) == int
-    assert _safe_dtype("a") == np.bool  # Should return a small data type.
+    assert _safe_dtype("a") == bool  # Should return a small data type.
     assert _safe_dtype(1, 1.0) == np.float64
     assert _safe_dtype(1, np.float32(1.0)) == np.float64
     assert _safe_dtype(np.int16(1), np.float32(1.0)) == np.float32
-    assert _safe_dtype(()) == np.bool  # Should return a small data type.
+    assert _safe_dtype(()) == bool  # Should return a small data type.
     assert _safe_dtype({"key": np.float32(1.0)}) == np.float32
 
 
